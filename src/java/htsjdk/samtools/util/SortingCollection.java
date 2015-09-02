@@ -118,7 +118,7 @@ public class SortingCollection<T> implements Iterable<T> {
     private Class<T> componentType;
     private boolean iterationStarted = false;
     private boolean doneAdding = false;
-    private ExecutorService service_for_spill = Executors.newCachedThreadPool();
+    private ExecutorService spill_service = Executors.newCachedThreadPool();
 
     /**
      * Set to true when all temp files have been cleaned up
@@ -172,7 +172,7 @@ public class SortingCollection<T> implements Iterable<T> {
             final int buffNumRecordsInRam = this.numRecordsInRam;
             this.numRecordsInRam = 0;
             this.ramRecords = (T[])Array.newInstance(this.componentType, this.maxRecordsInRam);
-            service_for_spill.submit(new Runnable() {
+            spill_service.submit(new Runnable() {
                 @Override
                 public void run() {
                     spillToDisk(buffRamRecords, buffNumRecordsInRam);
@@ -262,16 +262,16 @@ public class SortingCollection<T> implements Iterable<T> {
     }
 
     public void shutdownService(){
-        service_for_spill.shutdown();
+        spill_service.shutdown();
         try {
-            service_for_spill.awaitTermination(1, TimeUnit.DAYS);
+            spill_service.awaitTermination(1, TimeUnit.DAYS);
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
     }
 
     public boolean isDone(){
-        return service_for_spill.isTerminated();
+        return spill_service.isTerminated();
     }
 
 
