@@ -43,6 +43,7 @@ import java.util.NoSuchElementException;
 import java.util.TreeSet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -118,7 +119,9 @@ public class SortingCollection<T> implements Iterable<T> {
     private Class<T> componentType;
     private boolean iterationStarted = false;
     private boolean doneAdding = false;
-    private ExecutorService spill_service = Executors.newCachedThreadPool();
+    private ExecutorService spill_service = Executors.newSingleThreadExecutor();
+    private static final int NUMB_TASK_FOR_THREAD = 2;
+    private Semaphore semaphore = new Semaphore(NUMB_TASK_FOR_THREAD);
 
     /**
      * Set to true when all temp files have been cleaned up
@@ -168,6 +171,11 @@ public class SortingCollection<T> implements Iterable<T> {
             throw new IllegalStateException("Cannot add after calling iterator()");
         }
         if (numRecordsInRam == maxRecordsInRam) {
+            try {
+                semaphore.acquire();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
             final T[] buffRamRecords = this.ramRecords;
             final int buffNumRecordsInRam = this.numRecordsInRam;
             this.numRecordsInRam = 0;
@@ -178,6 +186,7 @@ public class SortingCollection<T> implements Iterable<T> {
                     spillToDisk(buffRamRecords, buffNumRecordsInRam);
                 }
             });
+            semaphore.release();
         }
         ramRecords[numRecordsInRam++] = rec;
     }
@@ -240,8 +249,9 @@ public class SortingCollection<T> implements Iterable<T> {
                 for (int i = 0; i < buffNumRecordsInRam; ++i) {
                     this.codec.encode(buffRamRecords[i]);
                     // Facilitate GC
+                    buffRamRecords[i] = null;
                 }
-
+                System.gc();
 
                 os.flush();
             } catch (RuntimeIOException ex) {
@@ -254,7 +264,6 @@ public class SortingCollection<T> implements Iterable<T> {
             }
 
             this.files.add(f);
-
         }
         catch (IOException e) {
             throw new RuntimeIOException(e);
