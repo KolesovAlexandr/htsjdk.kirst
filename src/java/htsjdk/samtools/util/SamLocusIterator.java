@@ -92,7 +92,7 @@ public class SamLocusIterator implements Iterable<SamLocusIterator.LocusInfo>, C
             recordAndOffsets.add(new RecordAndOffset(read, position));
         }
 
-        public int getSequenceIndex() { return referenceSequence.getSequenceIndex(); }
+       public int getSequenceIndex() { return referenceSequence.getSequenceIndex(); }
 
         /** @return 1-based reference position */
         public int getPosition() { return position; }

@@ -41,10 +41,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.TreeSet;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Semaphore;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 /**
  * Collection to which many records can be added.  After all records are added, the collection can be
@@ -60,6 +57,8 @@ import java.util.concurrent.TimeUnit;
  * to compress temporary files.
  */
 public class SortingCollection<T> implements Iterable<T> {
+
+    private static final int QUEUE_CAPACITY = Runtime.getRuntime().availableProcessors();
 
     /**
      * Client must implement this class, which defines the way in which records are written to and
@@ -119,9 +118,11 @@ public class SortingCollection<T> implements Iterable<T> {
     private Class<T> componentType;
     private boolean iterationStarted = false;
     private boolean doneAdding = false;
-    private ExecutorService spill_service = Executors.newSingleThreadExecutor();
-    private static final int NUMB_TASK_FOR_THREAD = 2;
+    private ExecutorService spill_service = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors()/2);
+    private static final int NUMB_TASK_FOR_THREAD = Runtime.getRuntime().availableProcessors();
     private Semaphore semaphore = new Semaphore(NUMB_TASK_FOR_THREAD);
+    final BlockingQueue<T[]> queue_to_spill = new LinkedBlockingQueue<>(QUEUE_CAPACITY);
+    final BlockingQueue<T[]> queue_free_arr = new LinkedBlockingQueue<>(QUEUE_CAPACITY);
 
     /**
      * Set to true when all temp files have been cleaned up
@@ -160,7 +161,20 @@ public class SortingCollection<T> implements Iterable<T> {
         this.comparator = comparator;
         this.componentType = componentType;
         this.maxRecordsInRam = maxRecordsInRam;
-        this.ramRecords = (T[])Array.newInstance(componentType, maxRecordsInRam);
+
+        for (int i = 0; i < QUEUE_CAPACITY; i++){
+            try {
+                queue_free_arr.put((T[])Array.newInstance(componentType, maxRecordsInRam));
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+
+        try {
+            this.ramRecords = queue_free_arr.take();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
     }
 
     public void add(final T rec) {
@@ -171,22 +185,39 @@ public class SortingCollection<T> implements Iterable<T> {
             throw new IllegalStateException("Cannot add after calling iterator()");
         }
         if (numRecordsInRam == maxRecordsInRam) {
+
             try {
-                semaphore.acquire();
+                queue_to_spill.put(this.ramRecords);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
-            final T[] buffRamRecords = this.ramRecords;
-            final int buffNumRecordsInRam = this.numRecordsInRam;
-            this.numRecordsInRam = 0;
-            this.ramRecords = (T[])Array.newInstance(this.componentType, this.maxRecordsInRam);
-            spill_service.submit(new Runnable() {
-                @Override
-                public void run() {
-                    spillToDisk(buffRamRecords, buffNumRecordsInRam);
+
+            final T[] buffRamRecords;
+            try {
+                buffRamRecords = queue_to_spill.take();
+                this.ramRecords = queue_free_arr.take();
+
+                final int buffNumRecordsInRam = this.numRecordsInRam;
+
+                this.numRecordsInRam = 0;
+
+                try {
+                    semaphore.acquire();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
                 }
-            });
-            semaphore.release();
+
+                spill_service.submit(new Runnable() {
+                    @Override
+                    public void run() {
+                        spillToDisk(buffRamRecords, buffNumRecordsInRam);
+                    }
+                });
+                semaphore.release();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+
         }
         ramRecords[numRecordsInRam++] = rec;
     }
@@ -251,7 +282,12 @@ public class SortingCollection<T> implements Iterable<T> {
                     // Facilitate GC
                     buffRamRecords[i] = null;
                 }
-                System.gc();
+
+                try {
+                    queue_free_arr.put(buffRamRecords);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
 
                 os.flush();
             } catch (RuntimeIOException ex) {
