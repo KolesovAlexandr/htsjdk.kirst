@@ -58,8 +58,6 @@ import java.util.concurrent.*;
  */
 public class SortingCollection<T> implements Iterable<T> {
 
-    private static final int QUEUE_CAPACITY = Runtime.getRuntime().availableProcessors();
-
     /**
      * Client must implement this class, which defines the way in which records are written to and
      * read from file.
@@ -120,6 +118,7 @@ public class SortingCollection<T> implements Iterable<T> {
     private boolean doneAdding = false;
     private ExecutorService spill_service = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors()/2);
     private static final int NUMB_TASK_FOR_THREAD = Runtime.getRuntime().availableProcessors();
+    private static final int QUEUE_CAPACITY = Runtime.getRuntime().availableProcessors();
     private Semaphore semaphore = new Semaphore(NUMB_TASK_FOR_THREAD);
     final BlockingQueue<T[]> queue_to_spill = new LinkedBlockingQueue<>(QUEUE_CAPACITY);
     final BlockingQueue<T[]> queue_free_arr = new LinkedBlockingQueue<>(QUEUE_CAPACITY);
