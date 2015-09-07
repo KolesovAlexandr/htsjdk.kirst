@@ -116,7 +116,7 @@ public class SortingCollection<T> implements Iterable<T> {
     private Class<T> componentType;
     private boolean iterationStarted = false;
     private boolean doneAdding = false;
-    private ExecutorService spill_service = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors()/2);
+    private ExecutorService spill_service = Executors.newSingleThreadExecutor();
     private static final int NUMB_TASK_FOR_THREAD = Runtime.getRuntime().availableProcessors();
     private static final int QUEUE_CAPACITY = Runtime.getRuntime().availableProcessors();
     private Semaphore semaphore = new Semaphore(NUMB_TASK_FOR_THREAD);
