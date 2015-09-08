@@ -116,11 +116,10 @@ public class SortingCollection<T> implements Iterable<T> {
     private Class<T> componentType;
     private boolean iterationStarted = false;
     private boolean doneAdding = false;
-    private ExecutorService spill_service = Executors.newSingleThreadExecutor();
+    private ExecutorService spill_service = Executors.newFixedThreadPool( Runtime.getRuntime().availableProcessors()/2);
     private static final int NUMB_TASK_FOR_THREAD = Runtime.getRuntime().availableProcessors();
-    private static final int QUEUE_CAPACITY = Runtime.getRuntime().availableProcessors();
+    private static final int QUEUE_CAPACITY = 2;
     private Semaphore semaphore = new Semaphore(NUMB_TASK_FOR_THREAD);
-    final BlockingQueue<T[]> queue_to_spill = new LinkedBlockingQueue<>(QUEUE_CAPACITY);
     final BlockingQueue<T[]> queue_free_arr = new LinkedBlockingQueue<>(QUEUE_CAPACITY);
 
     /**
@@ -185,15 +184,9 @@ public class SortingCollection<T> implements Iterable<T> {
         }
         if (numRecordsInRam == maxRecordsInRam) {
 
-            try {
-                queue_to_spill.put(this.ramRecords);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-
             final T[] buffRamRecords;
             try {
-                buffRamRecords = queue_to_spill.take();
+                buffRamRecords = this.ramRecords;
                 this.ramRecords = queue_free_arr.take();
 
                 final int buffNumRecordsInRam = this.numRecordsInRam;
