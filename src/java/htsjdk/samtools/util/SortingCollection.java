@@ -33,14 +33,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.reflect.Array;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Comparator;
-import java.util.Iterator;
-import java.util.List;
-import java.util.NoSuchElementException;
-import java.util.TreeSet;
+import java.util.*;
 import java.util.concurrent.*;
 
 /**
@@ -263,7 +256,10 @@ public class SortingCollection<T> implements Iterable<T> {
     private void spillToDisk(T[] buffRamRecords, int buffNumRecordsInRam) {
         try {
 
-            Arrays.sort(buffRamRecords, 0, buffNumRecordsInRam, this.comparator);
+            long start =System.currentTimeMillis();
+             Arrays.parallelSort(buffRamRecords, 0, buffNumRecordsInRam, this.comparator);
+            long stop = System.currentTimeMillis();
+            System.out.println(stop-start);
             final File f = newTempFile();
             OutputStream os = null;
             try {
