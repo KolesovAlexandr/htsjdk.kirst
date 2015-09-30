@@ -284,7 +284,8 @@ public class SortingCollection<T> implements Iterable<T> {
         }
     }
 
-    public void shutdownService(){
+    public void shutdownService(CountDownLatch latch){
+        notifyLatch(latch);
         spill_service.shutdown();
         try {
             spill_service.awaitTermination(1, TimeUnit.DAYS);
@@ -293,10 +294,9 @@ public class SortingCollection<T> implements Iterable<T> {
         }
     }
 
-    public boolean isDone(){
-        return spill_service.isTerminated();
+    private void notifyLatch(CountDownLatch latch) {
+        spill_service.execute(() -> latch.countDown());
     }
-
 
 
     /**
