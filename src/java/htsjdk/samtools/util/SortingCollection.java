@@ -33,14 +33,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.reflect.Array;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Comparator;
-import java.util.Iterator;
-import java.util.List;
-import java.util.NoSuchElementException;
-import java.util.TreeSet;
+import java.util.*;
 import java.util.concurrent.*;
 
 /**
@@ -113,10 +106,9 @@ public class SortingCollection<T> implements Iterable<T> {
     private final int maxRecordsInRam;
     private int numRecordsInRam = 0;
     private T[] ramRecords;
-    private Class<T> componentType;
     private boolean iterationStarted = false;
     private boolean doneAdding = false;
-    private ExecutorService spill_service = Executors.newFixedThreadPool( Runtime.getRuntime().availableProcessors()/2);
+    private ExecutorService spill_service = Executors.newSingleThreadExecutor();
     private static final int NUMB_TASK_FOR_THREAD = Runtime.getRuntime().availableProcessors();
     private static final int QUEUE_CAPACITY = 2;
     private Semaphore semaphore = new Semaphore(NUMB_TASK_FOR_THREAD);
@@ -157,7 +149,6 @@ public class SortingCollection<T> implements Iterable<T> {
         this.tmpDirs = tmpDir;
         this.codec = codec;
         this.comparator = comparator;
-        this.componentType = componentType;
         this.maxRecordsInRam = maxRecordsInRam;
 
         for (int i = 0; i < QUEUE_CAPACITY; i++){
@@ -199,13 +190,10 @@ public class SortingCollection<T> implements Iterable<T> {
                     e.printStackTrace();
                 }
 
-                spill_service.submit(new Runnable() {
-                    @Override
-                    public void run() {
-                        spillToDisk(buffRamRecords, buffNumRecordsInRam);
-                    }
+                spill_service.submit(() -> {
+                    spillToDisk(buffRamRecords, buffNumRecordsInRam);
+                    semaphore.release();
                 });
-                semaphore.release();
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
@@ -263,7 +251,7 @@ public class SortingCollection<T> implements Iterable<T> {
     private void spillToDisk(T[] buffRamRecords, int buffNumRecordsInRam) {
         try {
 
-            Arrays.sort(buffRamRecords, 0, buffNumRecordsInRam, this.comparator);
+             Arrays.parallelSort(buffRamRecords, 0, buffNumRecordsInRam, this.comparator);
             final File f = newTempFile();
             OutputStream os = null;
             try {
@@ -271,8 +259,6 @@ public class SortingCollection<T> implements Iterable<T> {
                 this.codec.setOutputStream(os);
                 for (int i = 0; i < buffNumRecordsInRam; ++i) {
                     this.codec.encode(buffRamRecords[i]);
-                    // Facilitate GC
-                    buffRamRecords[i] = null;
                 }
 
                 try {
@@ -298,7 +284,8 @@ public class SortingCollection<T> implements Iterable<T> {
         }
     }
 
-    public void shutdownService(){
+    public void shutdownService(CountDownLatch latch){
+        notifyLatch(latch);
         spill_service.shutdown();
         try {
             spill_service.awaitTermination(1, TimeUnit.DAYS);
@@ -307,10 +294,9 @@ public class SortingCollection<T> implements Iterable<T> {
         }
     }
 
-    public boolean isDone(){
-        return spill_service.isTerminated();
+    private void notifyLatch(CountDownLatch latch) {
+        spill_service.execute(() -> latch.countDown());
     }
-
 
 
     /**
