@@ -177,14 +177,6 @@ public class SAMRecord implements Cloneable, Locatable, Serializable {
         return mReadName;
     }
 
-    public void setId(int id){
-        this.id = id;
-    }
-
-    public int getId (){
-        return  this.id;
-    }
-
     /**
      * This method is preferred over getReadName().length(), because for BAMRecord
      * it may be faster.

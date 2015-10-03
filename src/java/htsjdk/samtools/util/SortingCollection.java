@@ -284,8 +284,7 @@ public class SortingCollection<T> implements Iterable<T> {
         }
     }
 
-    public void shutdownService(CountDownLatch latch){
-        notifyLatch(latch);
+    public void shutdownService(){
         spill_service.shutdown();
         try {
             spill_service.awaitTermination(1, TimeUnit.DAYS);
@@ -294,8 +293,8 @@ public class SortingCollection<T> implements Iterable<T> {
         }
     }
 
-    private void notifyLatch(CountDownLatch latch) {
-        spill_service.execute(() -> latch.countDown());
+    public void notifyLatch(CountDownLatch latch) {
+        latch.countDown();
     }
 
 
@@ -506,7 +505,7 @@ public class SortingCollection<T> implements Iterable<T> {
         FileRecordIterator(final File file) {
             this.file = file;
             try {
-                this.is = new FileInputStream(file);
+                this.is = new FileInputStream(this.file);
                 this.codec = SortingCollection.this.codec.clone();
                 this.codec.setInputStream(tempStreamFactory.wrapTempInputStream(this.is, Defaults.BUFFER_SIZE));
                 advance();
