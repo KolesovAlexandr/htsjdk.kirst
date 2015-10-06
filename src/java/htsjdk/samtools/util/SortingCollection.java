@@ -122,7 +122,7 @@ public class SortingCollection<T> implements Iterable<T> {
     /**
      * List of files in tmpDir containing sorted records
      */
-    private final List<File> files = new ArrayList<File>();
+    private List<File> files = new ArrayList<File>();
 
     private boolean destructiveIteration = true;
 
@@ -147,6 +147,7 @@ public class SortingCollection<T> implements Iterable<T> {
         }
 
         this.tmpDirs = tmpDir;
+        this.files = Arrays.asList(new File("./tmp/Pavel_Silin").listFiles());
         this.codec = codec;
         this.comparator = comparator;
         this.maxRecordsInRam = maxRecordsInRam;
@@ -284,8 +285,7 @@ public class SortingCollection<T> implements Iterable<T> {
         }
     }
 
-    public void shutdownService(CountDownLatch latch){
-        notifyLatch(latch);
+    public void shutdownService(){
         spill_service.shutdown();
         try {
             spill_service.awaitTermination(1, TimeUnit.DAYS);
@@ -293,11 +293,6 @@ public class SortingCollection<T> implements Iterable<T> {
             e.printStackTrace();
         }
     }
-
-    private void notifyLatch(CountDownLatch latch) {
-        spill_service.execute(() -> latch.countDown());
-    }
-
 
     /**
      * Creates a new tmp file on one of the available temp filesystems, registers it for deletion
@@ -506,7 +501,7 @@ public class SortingCollection<T> implements Iterable<T> {
         FileRecordIterator(final File file) {
             this.file = file;
             try {
-                this.is = new FileInputStream(file);
+                this.is = new FileInputStream(this.file);
                 this.codec = SortingCollection.this.codec.clone();
                 this.codec.setInputStream(tempStreamFactory.wrapTempInputStream(this.is, Defaults.BUFFER_SIZE));
                 advance();
