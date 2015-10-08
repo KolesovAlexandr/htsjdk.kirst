@@ -122,7 +122,7 @@ public class SortingCollection<T> implements Iterable<T> {
     /**
      * List of files in tmpDir containing sorted records
      */
-    private List<File> files = new ArrayList<File>();
+    final private List<File> files = new ArrayList<File>();
 
     private boolean destructiveIteration = true;
 
@@ -147,7 +147,6 @@ public class SortingCollection<T> implements Iterable<T> {
         }
 
         this.tmpDirs = tmpDir;
-//        this.files = Arrays.asList(new File("./tmp/pavelsilin").listFiles());
         this.codec = codec;
         this.comparator = comparator;
         this.maxRecordsInRam = maxRecordsInRam;
