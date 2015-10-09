@@ -122,7 +122,7 @@ public class SortingCollection<T> implements Iterable<T> {
     /**
      * List of files in tmpDir containing sorted records
      */
-    private List<File> files = new ArrayList<File>();
+    final private List<File> files = new ArrayList<File>();
 
     private boolean destructiveIteration = true;
 
@@ -147,7 +147,6 @@ public class SortingCollection<T> implements Iterable<T> {
         }
 
         this.tmpDirs = tmpDir;
-        this.files = Arrays.asList(new File("./tmp/Pavel_Silin").listFiles());
         this.codec = codec;
         this.comparator = comparator;
         this.maxRecordsInRam = maxRecordsInRam;
@@ -287,12 +286,16 @@ public class SortingCollection<T> implements Iterable<T> {
 
     public void shutdownService(){
         spill_service.shutdown();
+    }
+
+    public void awaitTermination() {
         try {
             spill_service.awaitTermination(1, TimeUnit.DAYS);
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
     }
+
 
     /**
      * Creates a new tmp file on one of the available temp filesystems, registers it for deletion
