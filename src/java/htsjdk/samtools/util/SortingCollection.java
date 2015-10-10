@@ -251,7 +251,7 @@ public class SortingCollection<T> implements Iterable<T> {
     private void spillToDisk(T[] buffRamRecords, int buffNumRecordsInRam) {
         try {
 
-             Arrays.parallelSort(buffRamRecords, 0, buffNumRecordsInRam, this.comparator);
+             Arrays.sort(buffRamRecords, 0, buffNumRecordsInRam, this.comparator);
             final File f = newTempFile();
             OutputStream os = null;
             try {
