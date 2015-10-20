@@ -108,10 +108,8 @@ public class SortingCollection<T> implements Iterable<T> {
     private T[] ramRecords;
     private boolean iterationStarted = false;
     private boolean doneAdding = false;
-    private ExecutorService spill_service = Executors.newSingleThreadExecutor();
-    private static final int NUMB_TASK_FOR_THREAD = Runtime.getRuntime().availableProcessors();
-    private static final int QUEUE_CAPACITY = 2;
-    private Semaphore semaphore = new Semaphore(NUMB_TASK_FOR_THREAD);
+    private ExecutorService spill_service = Executors.newCachedThreadPool();
+    private static final int QUEUE_CAPACITY = 4;
     final BlockingQueue<T[]> queue_free_arr = new LinkedBlockingQueue<>(QUEUE_CAPACITY);
 
     /**
@@ -184,16 +182,13 @@ public class SortingCollection<T> implements Iterable<T> {
 
                 this.numRecordsInRam = 0;
 
-                try {
-                    semaphore.acquire();
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-
-                spill_service.submit(() -> {
-                    spillToDisk(buffRamRecords, buffNumRecordsInRam);
-                    semaphore.release();
-                });
+                spill_service.submit(new Runnable() {
+                                         @Override
+                                         public void run() {
+                                             spillToDisk(buffRamRecords, buffNumRecordsInRam);
+                                         }
+                                     }
+                );
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
