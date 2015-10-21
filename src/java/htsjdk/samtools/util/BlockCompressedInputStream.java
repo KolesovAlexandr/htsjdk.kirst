@@ -59,8 +59,19 @@ public class BlockCompressedInputStream extends InputStream implements LocationA
     private long mBlockAddress = 0;
     private int mLastBlockLength = 0;
     private final BlockGunzipper blockGunzipper = new BlockGunzipper();
+    
+    private BlockingQueue<Block> mBlocks = null;
+    private ExecutorService mReadService = null;
     private boolean mAsync = false;
-    private Worker worker;
+    private Worker mWorker = null;
+    private Semaphore mSeekDone = null;
+    private SeekOperation mSeekOperation;
+    
+    private static final Runnable NOP = new Runnable() {
+        @Override
+        public void run() {
+        }
+    };    
 
 
     /**
@@ -92,12 +103,14 @@ public class BlockCompressedInputStream extends InputStream implements LocationA
         mFile = new SeekableFileStream(file);
         mStream = null;
         mAsync = async;
+        
         if (mAsync) {
-            blocks = new LinkedBlockingQueue<Block>(10);
-            ex = Executors.newSingleThreadExecutor();
-            worker = new Worker();
-            ex.execute(worker);
-
+            mBlocks = new LinkedBlockingQueue<Block>(3);
+            mReadService = Executors.newSingleThreadExecutor();
+            mWorker = new Worker();
+            mSeekDone = new Semaphore(0);
+            mSeekOperation = new SeekOperation();
+            mReadService.execute(mWorker);
         }
 
     }
@@ -159,7 +172,7 @@ public class BlockCompressedInputStream extends InputStream implements LocationA
         mFileBuffer = null;
         mCurrentBlock = null;
         if (mAsync) {
-            ex.shutdownNow();
+            mReadService.shutdownNow();
         }
     }
 
@@ -300,12 +313,19 @@ public class BlockCompressedInputStream extends InputStream implements LocationA
         if (mBlockAddress == compressedOffset && mCurrentBlock != null) {
             available = mCurrentBlock.length;
         } else {
-            mFile.seek(compressedOffset);
-            mBlockAddress = compressedOffset;
-            mLastBlockLength = 0;
-            if (mAsync ) {
-                worker.clear();
-                blocks.clear();
+            if (mAsync) {
+                mSeekOperation.compressedOffset = compressedOffset;
+                mWorker.op = mSeekOperation;
+                mBlocks.clear();
+                try {
+                    mSeekDone.acquire();
+                } catch (InterruptedException e) {
+                    throw new IOException(e);
+                }
+            } else {
+                mFile.seek(compressedOffset);
+                mBlockAddress = compressedOffset;
+                mLastBlockLength = 0;
             }
             readBlock();
             available = available();
@@ -412,9 +432,9 @@ public class BlockCompressedInputStream extends InputStream implements LocationA
         if (mAsync) {
             try {
 //                block = blocks.poll(2, TimeUnit.SECONDS);
-                block = blocks.take();
+                block = mBlocks.take();
                 while(block.length != 0 && block.valid == false) {
-                    block = blocks.take();
+                    block = mBlocks.take();
                 }
             } catch (InterruptedException e) {
                 throw new IOException(e);
@@ -439,6 +459,7 @@ public class BlockCompressedInputStream extends InputStream implements LocationA
     }
     
     private final class Worker implements Runnable {
+        volatile Runnable op = NOP;
         Block block = new Block();
         
         public void clear() {
@@ -449,15 +470,35 @@ public class BlockCompressedInputStream extends InputStream implements LocationA
         public void run() {
             try {
                 while (true) {
+                    op.run();
                     block = readB();
-                    blocks.put(block);
-                    
+                    mBlocks.put(block);
                 }
             } catch (InterruptedException | IOException e) {
-                // } catch (InterruptedException e) {
                 e.printStackTrace();
             }
         }
+    }
+    
+    private final class SeekOperation implements Runnable {
+        
+        long compressedOffset;
+
+        @Override
+        public void run() {
+            try {
+                System.err.println("seek to " + compressedOffset);
+                mFile.seek(compressedOffset);
+                mBlockAddress = compressedOffset;
+                mLastBlockLength = 0;
+                mBlocks.clear();
+                mWorker.op = NOP;
+                mSeekDone.release();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        
     }
 
     private static class Block {
@@ -466,10 +507,6 @@ public class BlockCompressedInputStream extends InputStream implements LocationA
         boolean valid = true;
     }
     
-    
-    BlockingQueue<Block> blocks = null;
-    ExecutorService ex = null;
-
     private Block readB() throws IOException {
         Block fileBuffer = new Block();
         byte[] buffer = new byte[BlockCompressedStreamConstants.MAX_COMPRESSED_BLOCK_SIZE];
