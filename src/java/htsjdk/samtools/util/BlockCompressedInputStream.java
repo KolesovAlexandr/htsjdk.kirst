@@ -431,8 +431,8 @@ public class BlockCompressedInputStream extends InputStream implements LocationA
         Block block;
         if (mAsync) {
             try {
-//                block = blocks.poll(2, TimeUnit.SECONDS);
-                block = mBlocks.take();
+                block = mBlocks.poll(1, TimeUnit.SECONDS);
+//                block = mBlocks.take();
                 while(block.length != 0 && block.valid == false) {
                     block = mBlocks.take();
                 }
@@ -449,10 +449,8 @@ public class BlockCompressedInputStream extends InputStream implements LocationA
             mCurrentBlock = new byte[0];
             return;
         }
-//        mFileBuffer = block.buffer;
         mCurrentBlock = block.buffer;
 
-//        inflateBlock(mFileBuffer, block.length);
         mCurrentOffset = 0;
         mBlockAddress += mLastBlockLength;
         mLastBlockLength = block.length;
@@ -460,19 +458,13 @@ public class BlockCompressedInputStream extends InputStream implements LocationA
     
     private final class Worker implements Runnable {
         volatile Runnable op = NOP;
-        Block block = new Block();
-        
-        public void clear() {
-            block.valid = false;
-        }
         
         @Override
         public void run() {
             try {
                 while (true) {
                     op.run();
-                    block = readB();
-                    mBlocks.put(block);
+                    mBlocks.put(readB());
                 }
             } catch (InterruptedException | IOException e) {
                 e.printStackTrace();
