@@ -393,37 +393,37 @@ public class BlockCompressedInputStream extends InputStream implements LocationA
                 buffer[13] == BlockCompressedStreamConstants.BGZF_ID2);
     }
 
-    private void readBlockOrig()
-        throws IOException {
-
-        if (mFileBuffer == null) {
-            mFileBuffer = new byte[BlockCompressedStreamConstants.MAX_COMPRESSED_BLOCK_SIZE];
-        }
-        int count = readBytes(mFileBuffer, 0, BlockCompressedStreamConstants.BLOCK_HEADER_LENGTH);
-        if (count == 0) {
-            // Handle case where there is no empty gzip block at end.
-            mCurrentOffset = 0;
-            mBlockAddress += mLastBlockLength;
-            mCurrentBlock = new byte[0];
-            return;
-        }
-        if (count != BlockCompressedStreamConstants.BLOCK_HEADER_LENGTH) {
-            throw new IOException("Premature end of file");
-        }
-        final int blockLength = unpackInt16(mFileBuffer, BlockCompressedStreamConstants.BLOCK_LENGTH_OFFSET) + 1;
-        if (blockLength < BlockCompressedStreamConstants.BLOCK_HEADER_LENGTH || blockLength > mFileBuffer.length) {
-            throw new IOException("Unexpected compressed block length: " + blockLength);
-        }
-        final int remaining = blockLength - BlockCompressedStreamConstants.BLOCK_HEADER_LENGTH;
-        count = readBytes(mFileBuffer, BlockCompressedStreamConstants.BLOCK_HEADER_LENGTH, remaining);
-        if (count != remaining) {
-            throw new FileTruncatedException("Premature end of file");
-        }
-        inflateBlock(mFileBuffer, blockLength);
-        mCurrentOffset = 0;
-        mBlockAddress += mLastBlockLength;
-        mLastBlockLength = blockLength;
-    }
+//    private void readBlockOrig()
+//        throws IOException {
+//
+//        if (mFileBuffer == null) {
+//            mFileBuffer = new byte[BlockCompressedStreamConstants.MAX_COMPRESSED_BLOCK_SIZE];
+//        }
+//        int count = readBytes(mFileBuffer, 0, BlockCompressedStreamConstants.BLOCK_HEADER_LENGTH);
+//        if (count == 0) {
+//            // Handle case where there is no empty gzip block at end.
+//            mCurrentOffset = 0;
+//            mBlockAddress += mLastBlockLength;
+//            mCurrentBlock = new byte[0];
+//            return;
+//        }
+//        if (count != BlockCompressedStreamConstants.BLOCK_HEADER_LENGTH) {
+//            throw new IOException("Premature end of file");
+//        }
+//        final int blockLength = unpackInt16(mFileBuffer, BlockCompressedStreamConstants.BLOCK_LENGTH_OFFSET) + 1;
+//        if (blockLength < BlockCompressedStreamConstants.BLOCK_HEADER_LENGTH || blockLength > mFileBuffer.length) {
+//            throw new IOException("Unexpected compressed block length: " + blockLength);
+//        }
+//        final int remaining = blockLength - BlockCompressedStreamConstants.BLOCK_HEADER_LENGTH;
+//        count = readBytes(mFileBuffer, BlockCompressedStreamConstants.BLOCK_HEADER_LENGTH, remaining);
+//        if (count != remaining) {
+//            throw new FileTruncatedException("Premature end of file");
+//        }
+//        inflateBlock(mFileBuffer, blockLength);
+//        mCurrentOffset = 0;
+//        mBlockAddress += mLastBlockLength;
+//        mLastBlockLength = blockLength;
+//    }
 
     private void readBlock()
             throws IOException {
@@ -467,7 +467,7 @@ public class BlockCompressedInputStream extends InputStream implements LocationA
                     mBlocks.put(readB());
                 }
             } catch (InterruptedException | IOException e) {
-                e.printStackTrace();
+//                e.printStackTrace();
             }
         }
     }
@@ -479,7 +479,7 @@ public class BlockCompressedInputStream extends InputStream implements LocationA
         @Override
         public void run() {
             try {
-                System.err.println("seek to " + compressedOffset);
+//                System.err.println("seek to " + compressedOffset);
                 mFile.seek(compressedOffset);
                 mBlockAddress = compressedOffset;
                 mLastBlockLength = 0;
