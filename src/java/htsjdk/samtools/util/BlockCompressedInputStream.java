@@ -433,16 +433,13 @@ public class BlockCompressedInputStream extends InputStream implements LocationA
             try {
                 block = mBlocks.poll(1, TimeUnit.SECONDS);
 //                block = mBlocks.take();
-                while(block.length != 0 && block.valid == false) {
-                    block = mBlocks.take();
-                }
             } catch (InterruptedException e) {
                 throw new IOException(e);
             }
         } else {
             block = readB();
         }
-        if (block.length == 0) {
+        if (block == null || block.length == 0) {
             // Handle case where there is no empty gzip block at end.
             mCurrentOffset = 0;
             mBlockAddress += mLastBlockLength;
@@ -496,7 +493,6 @@ public class BlockCompressedInputStream extends InputStream implements LocationA
     private static class Block {
         byte[] buffer;
         int length;
-        boolean valid = true;
     }
     
     private Block readB() throws IOException {
