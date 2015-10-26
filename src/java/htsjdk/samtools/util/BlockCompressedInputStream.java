@@ -53,7 +53,6 @@ import java.util.concurrent.*;
 public class BlockCompressedInputStream extends InputStream implements LocationAware {
     private InputStream mStream = null;
     private SeekableStream mFile = null;
-    private byte[] mFileBuffer = null;
     private byte[] mCurrentBlock = null;
     private int mCurrentOffset = 0;
     private long mBlockAddress = 0;
@@ -64,8 +63,6 @@ public class BlockCompressedInputStream extends InputStream implements LocationA
     private ExecutorService mReadService = null;
     private boolean mAsync = false;
     private Worker mWorker = null;
-    private Semaphore mSeekDone = null;
-    private SeekOperation mSeekOperation;
     
     private static final Runnable NOP = new Runnable() {
         @Override
@@ -108,8 +105,6 @@ public class BlockCompressedInputStream extends InputStream implements LocationA
             mBlocks = new LinkedBlockingQueue<Block>(3);
             mReadService = Executors.newSingleThreadExecutor();
             mWorker = new Worker();
-            mSeekDone = new Semaphore(0);
-            mSeekOperation = new SeekOperation();
             mReadService.execute(mWorker);
         }
 
@@ -169,7 +164,6 @@ public class BlockCompressedInputStream extends InputStream implements LocationA
             mStream = null;
         }
         // Encourage garbage collection
-        mFileBuffer = null;
         mCurrentBlock = null;
         if (mAsync) {
             mReadService.shutdownNow();
@@ -314,14 +308,7 @@ public class BlockCompressedInputStream extends InputStream implements LocationA
             available = mCurrentBlock.length;
         } else {
             if (mAsync) {
-                mSeekOperation.compressedOffset = compressedOffset;
-                mWorker.op = mSeekOperation;
-                mBlocks.clear();
-                try {
-                    mSeekDone.acquire();
-                } catch (InterruptedException e) {
-                    throw new IOException(e);
-                }
+                mWorker.reset(compressedOffset);
             } else {
                 mFile.seek(compressedOffset);
                 mBlockAddress = compressedOffset;
@@ -393,37 +380,6 @@ public class BlockCompressedInputStream extends InputStream implements LocationA
                 buffer[13] == BlockCompressedStreamConstants.BGZF_ID2);
     }
 
-//    private void readBlockOrig()
-//        throws IOException {
-//
-//        if (mFileBuffer == null) {
-//            mFileBuffer = new byte[BlockCompressedStreamConstants.MAX_COMPRESSED_BLOCK_SIZE];
-//        }
-//        int count = readBytes(mFileBuffer, 0, BlockCompressedStreamConstants.BLOCK_HEADER_LENGTH);
-//        if (count == 0) {
-//            // Handle case where there is no empty gzip block at end.
-//            mCurrentOffset = 0;
-//            mBlockAddress += mLastBlockLength;
-//            mCurrentBlock = new byte[0];
-//            return;
-//        }
-//        if (count != BlockCompressedStreamConstants.BLOCK_HEADER_LENGTH) {
-//            throw new IOException("Premature end of file");
-//        }
-//        final int blockLength = unpackInt16(mFileBuffer, BlockCompressedStreamConstants.BLOCK_LENGTH_OFFSET) + 1;
-//        if (blockLength < BlockCompressedStreamConstants.BLOCK_HEADER_LENGTH || blockLength > mFileBuffer.length) {
-//            throw new IOException("Unexpected compressed block length: " + blockLength);
-//        }
-//        final int remaining = blockLength - BlockCompressedStreamConstants.BLOCK_HEADER_LENGTH;
-//        count = readBytes(mFileBuffer, BlockCompressedStreamConstants.BLOCK_HEADER_LENGTH, remaining);
-//        if (count != remaining) {
-//            throw new FileTruncatedException("Premature end of file");
-//        }
-//        inflateBlock(mFileBuffer, blockLength);
-//        mCurrentOffset = 0;
-//        mBlockAddress += mLastBlockLength;
-//        mLastBlockLength = blockLength;
-//    }
 
     private void readBlock()
             throws IOException {
@@ -431,7 +387,7 @@ public class BlockCompressedInputStream extends InputStream implements LocationA
         Block block;
         if (mAsync) {
             try {
-                block = mBlocks.poll(1, TimeUnit.SECONDS);
+                block = mBlocks.poll(1, TimeUnit.SECONDS); //if (block == null)  TODO
 //                block = mBlocks.take();
             } catch (InterruptedException e) {
                 throw new IOException(e);
@@ -439,7 +395,7 @@ public class BlockCompressedInputStream extends InputStream implements LocationA
         } else {
             block = readB();
         }
-        if (block == null || block.length == 0) {
+        if (block.length == 0) {
             // Handle case where there is no empty gzip block at end.
             mCurrentOffset = 0;
             mBlockAddress += mLastBlockLength;
@@ -455,13 +411,31 @@ public class BlockCompressedInputStream extends InputStream implements LocationA
     
     private final class Worker implements Runnable {
         volatile Runnable op = NOP;
+
+        private Semaphore seekDone = new Semaphore(0);
+        private SeekOperation seekOperation = new SeekOperation(seekDone);
+        
+        public void reset(long offset) throws IOException {
+            seekOperation.compressedOffset = offset;
+            op = seekOperation;
+            mBlocks.clear();
+            try {
+                seekDone.acquire();
+            } catch (InterruptedException e) {
+                throw new IOException(e);
+            }
+        }
         
         @Override
         public void run() {
             try {
                 while (true) {
                     op.run();
-                    mBlocks.put(readB());
+                    Block block = readB();
+                    mBlocks.put(block);
+                    if(block.length == 0) {
+                        return;
+                    }
                 }
             } catch (InterruptedException | IOException e) {
 //                e.printStackTrace();
@@ -471,7 +445,12 @@ public class BlockCompressedInputStream extends InputStream implements LocationA
     
     private final class SeekOperation implements Runnable {
         
-        long compressedOffset;
+        private long compressedOffset;
+        private final Semaphore seekDone;
+
+        public SeekOperation(Semaphore seekDone) {
+            this.seekDone = seekDone;
+        }
 
         @Override
         public void run() {
@@ -482,7 +461,7 @@ public class BlockCompressedInputStream extends InputStream implements LocationA
                 mLastBlockLength = 0;
                 mBlocks.clear();
                 mWorker.op = NOP;
-                mSeekDone.release();
+                seekDone.release();
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -517,27 +496,11 @@ public class BlockCompressedInputStream extends InputStream implements LocationA
             throw new FileTruncatedException("Premature end of file");
         }
         
-        fileBuffer.buffer = inflateBlockX(buffer, fileBuffer.length);
+        fileBuffer.buffer = inflateBlock(buffer, fileBuffer.length);
         return fileBuffer;
     }
 
-    private void inflateBlock(final byte[] compressedBlock, final int compressedLength)
-        throws IOException {
-        final int uncompressedLength = unpackInt32(compressedBlock, compressedLength-4);
-        byte[] buffer = mCurrentBlock;
-        mCurrentBlock = null;
-        if (buffer == null || buffer.length != uncompressedLength) {
-            try {
-                buffer = new byte[uncompressedLength];
-            } catch (final NegativeArraySizeException e) {
-                throw new RuntimeIOException("BGZF file has invalid uncompressedLength: " + uncompressedLength, e);
-            }
-        }
-        blockGunzipper.unzipBlock(buffer, compressedBlock, compressedLength);
-        mCurrentBlock = buffer;
-    }
-
-    private byte[] inflateBlockX(final byte[] compressedBlock, final int compressedLength)
+    private byte[] inflateBlock(final byte[] compressedBlock, final int compressedLength)
             throws IOException {
         final int uncompressedLength = unpackInt32(compressedBlock, compressedLength - 4);
         try {
