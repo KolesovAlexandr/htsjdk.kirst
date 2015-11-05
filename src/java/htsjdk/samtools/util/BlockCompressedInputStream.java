@@ -24,19 +24,32 @@
 package htsjdk.samtools.util;
 
 
-import java.io.*;
-import java.net.URL;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.util.Arrays;
-import java.util.concurrent.*;
-
 import htsjdk.samtools.FileTruncatedException;
 import htsjdk.samtools.SAMException;
 import htsjdk.samtools.seekablestream.SeekableBufferedStream;
 import htsjdk.samtools.seekablestream.SeekableFileStream;
 import htsjdk.samtools.seekablestream.SeekableHTTPStream;
 import htsjdk.samtools.seekablestream.SeekableStream;
+
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.RandomAccessFile;
+import java.net.URL;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.util.Arrays;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.BrokenBarrierException;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 /*
  * Utility class for reading BGZF block compressed files.  The caller can treat this file like any other InputStream.
